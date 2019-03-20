@@ -1,0 +1,25 @@
+#pragma kernel CSMain
+#define BATCH 32
+
+Texture2D<float4> input;
+RWStructuredBuffer<int> output;
+
+uint2 resolution;
+int ptrDest;
+
+[numthreads(BATCH, BATCH, 1)]
+void CSMain (uint2 dispatchId : SV_DispatchThreadID, uint2 groupId : SV_GroupThreadID)
+{
+    for (uint y = dispatchId.y; y < resolution.y; y++) {
+        for (uint x = dispatchId.x; x < resolution.x; x++) {
+            float4 color = input[uint2(x,y)];
+            int packed = 0;
+            packed |= int(floor(color.r * 255)) << 24;
+            packed |= int(floor(color.g * 255)) << 16;
+            packed |= int(floor(color.b * 255)) <<  8;
+            packed |= int(floor(color.a * 255)) <<  0;
+
+            output[ptrDest + y * resolution.x + x] = packed;
+        }
+    }
+}
