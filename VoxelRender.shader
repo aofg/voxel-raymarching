@@ -21,10 +21,10 @@
 
         #include "UnityCG.cginc"
         #include "UnityPBSLighting.cginc"
-        #include "Assets/uRaymarching/Shaders/Include/Common.cginc"
-        #include "Assets/uRaymarching/Shaders/Include/Primitives.cginc"
-        #include "Assets/uRaymarching/Shaders/Include/Math.cginc"
-        #include "Assets/uRaymarching/Shaders/Include/Raymarching.cginc"
+        #include "./Include/Common.cginc"
+        #include "./Include/Primitives.cginc"
+        #include "./Include/Math.cginc"
+        #include "./Include/Raymarching.cginc"
         
         sampler2D _Volume2D;
         float4 _VolumeSize;
