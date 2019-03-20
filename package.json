@@ -1,7 +1,7 @@
 {
-    "name": "com.voxel.raymarching",
+    "name": "cc.aofg.voxel-raymarching",
     "author": "Aler Denisov <aler.zampillo@gmail.com>",
-    "displayName": "voxel Raymarching",
+    "displayName": "Voxel Raymarching",
     "version": "0.0.1", 
     "dependencies": {
         "com.unity.mathematics": "0.0.12-preview.20"
