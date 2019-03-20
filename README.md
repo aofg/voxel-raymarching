@@ -34,4 +34,6 @@ cc.aofg.voxel-raymarching": "git://github.com/aofg/voxel-raymarching.git
     - [ ] Raycasted Ambient Occlusion
     - [ ] Light flood (GI)
     - [ ] Reflections
-- Rich parametrization
+- [ ] StructuredBuffer Rendering Pipeline
+    - [x] Draft implementation
+    - [ ] Memory pointer map implementation
