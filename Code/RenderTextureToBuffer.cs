@@ -10,6 +10,8 @@
 
 
 using System;
+using System.Linq;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace VoxelRaymarching
@@ -17,11 +19,25 @@ namespace VoxelRaymarching
     [ExecuteInEditMode]
     public class RenderTextureToBuffer : MonoBehaviour
     {
-        private const int SHADER_BATCH = 32;
-        public Texture Texture;
-        public ComputeShader CopyShader;
-        private ComputeBuffer cb;
+        public const int SHADER_BATCH = 32;
+        public const int SHADER_BATCH_2 = 1024; // 32*32
         
+        [System.Serializable]
+        public class TextureLayer
+        {
+            public Texture Layer;
+            public int3 Size;
+            public int3 Offset;
+            public int3 Rotate;
+            public int3 Pivot;
+        }
+
+        public TextureLayer[] Layers;
+        public ComputeShader ClearShader;
+        public ComputeShader BlendShader;
+
+        private ComputeBuffer cb;
+
         private void OnEnable()
         {
             var mr = GetComponent<MeshRenderer>();
@@ -31,38 +47,59 @@ namespace VoxelRaymarching
                 throw new NullReferenceException("Meshrenderer not found");
             }
 
-            if (!Texture)
+            if (Layers.Length == 0)
             {
                 enabled = false;
-                throw new NullReferenceException("Texture isn't assigned");
+                throw new NullReferenceException("Layers is required");
+            }
+
+            if (Layers.Any(l => l.Layer == null))
+            {
+                enabled = false;
+                throw new NullReferenceException("Layer textures is required");
             }
             
 
-//            if (!Texture.isReadable)
-//            {
-//                enabled = false;
-//                throw new NullReferenceException("Texture not readable");
-//            }
-
             cb?.Dispose();
             
-            cb = new ComputeBuffer(Texture.width * Texture.height * 32 * 32 * 5, sizeof(int));
-            CopyShader.SetInts("resolution", Texture.width, Texture.height);
-            CopyShader.SetInt("ptrDest", Texture.width * Texture.height * 5);
             
-            CopyShader.SetBuffer(0, "output", cb);
-            CopyShader.SetTexture(0, "input", Texture);
-            CopyShader.Dispatch(0, 1 + Texture.width / SHADER_BATCH, 1 + Texture.height / SHADER_BATCH, 1);
+            
+            cb = new ComputeBuffer(32 * 32 * 32, sizeof(int));
+            ClearShader.SetBuffer(0, "output", cb);
+            ClearShader.SetInt("length", 32 * 32 * 32);
+            ClearShader.SetInt("ptr", 0);
+            ClearShader.Dispatch(0, 32, 1, 1); // 1024 cols
+
+            BlendShader.SetBuffer(0, "output", cb);
+            BlendShader.SetInt("ptr", 0);
+            
+            foreach (var layer in Layers)
+            {
+                BlendShader.SetInts("inputOffset", layer.Offset.x, layer.Offset.y,  layer.Offset.z);
+                BlendShader.SetInts("inputRotate", layer.Rotate.x, layer.Rotate.y,  layer.Rotate.z);
+                BlendShader.SetInts("inputSize", layer.Size.x, layer.Size.y,  layer.Size.z);
+                BlendShader.SetMatrix("inputTRS", Matrix4x4.Rotate(Quaternion.Euler((float3) (layer.Rotate * 90))));
+                BlendShader.SetInts("inputPivot", layer.Pivot.x, layer.Pivot.y,  layer.Pivot.z);
+                BlendShader.SetTexture(0, "input", layer.Layer);
+                BlendShader.Dispatch(0, 1, 1, SHADER_BATCH);
+            }
+            
+//            CopyShader.SetInts("resolution", Texture.width, Texture.height);
+//            CopyShader.SetInt("ptrDest", Texture.width * Texture.height * 5);
+//            
+//            CopyShader.SetBuffer(0, "output", cb);
+//            CopyShader.SetTexture(0, "input", Texture);
+//            CopyShader.Dispatch(0, 1 + Texture.width / SHADER_BATCH, 1 + Texture.height / SHADER_BATCH, 1);
 
             if (Application.isPlaying)
             {
                 mr.material.SetBuffer("_Buffer", cb);
-                mr.material.SetInt("_BufferPtr", Texture.width * Texture.height * 5);
+                mr.material.SetInt("_BufferPtr", 0);
             }
             else
             {
                 mr.sharedMaterial.SetBuffer("_Buffer", cb);
-                mr.sharedMaterial.SetInt("_BufferPtr", Texture.width * Texture.height * 5);
+                mr.sharedMaterial.SetInt("_BufferPtr", 0);
             }
 
             enabled = false;

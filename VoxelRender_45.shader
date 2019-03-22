@@ -26,6 +26,7 @@
         #include "./Include/Primitives.cginc"
         #include "./Include/Math.cginc"
         #include "./Include/Raymarching.cginc"
+        #include "./Code/ComputeShaders/Bake.cginc"
         
         float4 _VolumeSize;
         uniform int _BufferPtr;
@@ -36,11 +37,10 @@
             int3 m = floor(pos);
             if (m.x < 0 || m.y < 0 || m.z < 0 || m.x >= _VolumeSize.x || m.y >= _VolumeSize.y || m.z >= _VolumeSize.z) return false;
 
-            int u = m.y + m.z * _VolumeSize.x;
-            int v = m.x;
-            // int x = m.y * _VolumeSize.x + m.x;
-            // int y = m.z;
-            int index = u * _VolumeSize.x + v;////y * _VolumeSize.x * _VolumeSize.y + x;
+            // int u = m.y + m.z * _VolumeSize.x;
+            // int v = m.x;
+            // int index = u * _VolumeSize.x + v;////y * _VolumeSize.x * _VolumeSize.y + x;
+            int index = BufferToIndex(VoxelToBuffer(uint3(m)));
             int voxelInt = _Buffer[_BufferPtr + index];
 
             voxel.r = (voxelInt >> 24 & 0xFF) / 256.0;
@@ -48,7 +48,7 @@
             voxel.b = (voxelInt >>  8 & 0xFF) / 256.0;
             voxel.a = (voxelInt >>  0 & 0xFF) / 256.0;
 
-            return voxel > 0;
+            return voxel.a > 0;
             // float2 uv = float2(
             //     // u
             //     m.y / _VolumeSize.y + (m.x + .5) / _VolumeSize.x / _VolumeSize.y,

@@ -1,0 +1,90 @@
+#pragma kernel CSMain
+#include "./Bake.cginc"
+
+Texture2D<float4> input;
+RWStructuredBuffer<int> output;
+int3 inputSize;
+int3 inputPivot;
+int3 inputOffset;
+int3 inputRotate;
+float4x4 inputTRS;
+int ptr;
+
+[numthreads(SIDE, SIDE, 1)]
+void CSMain (int3 dispatchId : SV_DispatchThreadID)
+{
+    int3 voxel = int3(dispatchId.x, dispatchId.y, dispatchId.z);
+    int index = BufferToIndex(VoxelToBuffer(voxel));
+    
+    if (!Inside(voxel)) {
+        return;
+    }
+
+    float3 rv = float3(voxel) + 0.5;
+    rv -= int3(16, 0, 16); // volume pivot hardcode
+    rv += inputPivot;
+
+    rv -= inputOffset;
+    rv -= inputPivot;
+    // while(inputRotate.x % 4 > 0) {
+    //     inputRotate.x--;
+    //     rv = RotateX(rv);
+    // }
+    // while(inputRotate.y % 4 > 0) {
+    //     inputRotate.y--;
+    //     rv = RotateY(rv);
+    // }
+    // while(inputRotate.z % 4 > 0) {
+    //     inputRotate.z--;
+    //     rv = RotateZ(rv);
+    // }
+    // rv -= inputOffset;
+    rv = mul(inputTRS, rv);
+    rv += inputPivot;
+
+    rv = floor(rv);
+
+    if (!Inside(rv, inputSize))
+    {
+        return;
+    }
+
+    int2 buffer = VoxelToBuffer(rv.x, rv.y, rv.z);
+
+    float4 src = UnpackColor(output[index]);
+    float4 dst = input[buffer];
+
+    float4 result;
+    result.a = src.a + dst.a * (1.0 - src.a);
+    result.rgb = lerp(src.rgb, dst.rgb, dst.a);
+
+    output[index] = PackColor(result);
+    // }
+    // int xInput = rect.x;
+    // int yInput = rect.y;
+    // int wInput = rect.z;
+    // int hInput = rect.w;
+
+    // for (int y = dispatchId.y; y < dispatchId.y + SIDE; y++) {
+    //     if (yInput + y >= hInput) {
+    //         return;
+    //     } 
+
+    //     for (int x = dispatchId.x; x < dispatchId.x + SIDE; x++) {
+    //         if (xInput + x >= wInput) {
+    //             continue;
+    //         }
+
+    //         int index = ptr + y * SIDE2 + x;
+
+    //         float4 src = VoxelToColor(index);
+    //         float4 dst = input[int2(xInput + x, yInput + y)];
+
+    //         float4 result;
+    //         result.a = src.a + dst.a * (1.0 - src.a);
+    //         result.rgb = lerp(src.rgb, dst.rgb, dst.a);
+
+    //         output[index] = ColorToVoxel(result);
+    //     }
+    // }
+}
