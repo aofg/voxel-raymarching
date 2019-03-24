@@ -40,6 +40,16 @@ namespace VoxelRaymarching
 
         private void OnEnable()
         {
+            cb = new ComputeBuffer(2 * 32 * 32 * 32, sizeof(int));
+        }
+
+        private void OnDisable()
+        {
+            cb?.Dispose();
+        }
+
+        private void Update()
+        {
             var mr = GetComponent<MeshRenderer>();
             if (!mr)
             {
@@ -59,26 +69,20 @@ namespace VoxelRaymarching
                 throw new NullReferenceException("Layer textures is required");
             }
             
-
-            cb?.Dispose();
-            
-            
-            
-            cb = new ComputeBuffer(32 * 32 * 32, sizeof(int));
             ClearShader.SetBuffer(0, "output", cb);
             ClearShader.SetInt("length", 32 * 32 * 32);
-            ClearShader.SetInt("ptr", 0);
+            ClearShader.SetInt("ptr", 32 * 32 * 32);
             ClearShader.Dispatch(0, 32, 1, 1); // 1024 cols
 
             BlendShader.SetBuffer(0, "output", cb);
-            BlendShader.SetInt("ptr", 0);
+            BlendShader.SetInt("ptr", 32 * 32 * 32);
             
             foreach (var layer in Layers)
             {
                 BlendShader.SetInts("inputOffset", layer.Offset.x, layer.Offset.y,  layer.Offset.z);
                 BlendShader.SetInts("inputRotate", layer.Rotate.x, layer.Rotate.y,  layer.Rotate.z);
                 BlendShader.SetInts("inputSize", layer.Size.x, layer.Size.y,  layer.Size.z);
-                BlendShader.SetMatrix("inputTRS", Matrix4x4.Rotate(Quaternion.Euler((float3) (layer.Rotate * 90))));
+                BlendShader.SetMatrix("inputTRS", Matrix4x4.Rotate(Quaternion.Euler((float3) layer.Rotate)));
                 BlendShader.SetInts("inputPivot", layer.Pivot.x, layer.Pivot.y,  layer.Pivot.z);
                 BlendShader.SetTexture(0, "input", layer.Layer);
                 BlendShader.Dispatch(0, 1, 1, SHADER_BATCH);
@@ -94,15 +98,15 @@ namespace VoxelRaymarching
             if (Application.isPlaying)
             {
                 mr.material.SetBuffer("_Buffer", cb);
-                mr.material.SetInt("_BufferPtr", 0);
+                mr.material.SetInt("_BufferPtr", 32 * 32 * 32);
             }
             else
             {
                 mr.sharedMaterial.SetBuffer("_Buffer", cb);
-                mr.sharedMaterial.SetInt("_BufferPtr", 0);
+                mr.sharedMaterial.SetInt("_BufferPtr", 32 * 32 * 32);
             }
 
-            enabled = false;
+//            enabled = false;
         }
     }
 }

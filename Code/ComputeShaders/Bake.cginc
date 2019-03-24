@@ -8,10 +8,10 @@
 
 int PackColor(float4 color) {
     int packed = 0;
-    packed |= int(floor(color.r * 255)) << 24;
-    packed |= int(floor(color.g * 255)) << 16;
-    packed |= int(floor(color.b * 255)) <<  8;
-    packed |= int(floor(color.a * 255)) <<  0;
+    packed |= int(floor(clamp(color.r, 0.0, 1.0) * 255)) << 24;
+    packed |= int(floor(clamp(color.g, 0.0, 1.0) * 255)) << 16;
+    packed |= int(floor(clamp(color.b, 0.0, 1.0) * 255)) <<  8;
+    packed |= int(floor(clamp(color.a, 0.0, 1.0) * 255)) <<  0;
     return packed;
 }
 
@@ -76,4 +76,18 @@ bool Inside(int3 voxel, int3 size) {
 
 bool Inside(int3 voxel) {
     return Inside(voxel, DEFAULT_SIZE);
+}
+
+
+int3 WorldPositionToChunkPosition(int3 pos, int3 chunkSize) {
+    return pos / chunkSize;
+}
+
+int3 WorldPositionToChunkPosition(int3 pos) {
+    return WorldPositionToChunkPosition(pos, DEFAULT_SIZE);
+}
+
+int BufferPtrFromChunkPosition(StructuredBuffer<int> allocationMap, int3 chunkPos, int3 worldSize) {
+    int index = chunkPos.x + chunkPos.z * worldSize.x + chunkPos.y * worldSize.x * worldSize.z;
+    return allocationMap[index];
 }

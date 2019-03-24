@@ -22,26 +22,9 @@ void CSMain (int3 dispatchId : SV_DispatchThreadID)
 
     float3 rv = float3(voxel) + 0.5;
     rv -= int3(16, 0, 16); // volume pivot hardcode
-    rv += inputPivot;
-
     rv -= inputOffset;
-    rv -= inputPivot;
-    // while(inputRotate.x % 4 > 0) {
-    //     inputRotate.x--;
-    //     rv = RotateX(rv);
-    // }
-    // while(inputRotate.y % 4 > 0) {
-    //     inputRotate.y--;
-    //     rv = RotateY(rv);
-    // }
-    // while(inputRotate.z % 4 > 0) {
-    //     inputRotate.z--;
-    //     rv = RotateZ(rv);
-    // }
-    // rv -= inputOffset;
     rv = mul(inputTRS, rv);
     rv += inputPivot;
-
     rv = floor(rv);
 
     if (!Inside(rv, inputSize))
@@ -49,16 +32,16 @@ void CSMain (int3 dispatchId : SV_DispatchThreadID)
         return;
     }
 
-    int2 buffer = VoxelToBuffer(rv.x, rv.y, rv.z);
+    int2 buffer = VoxelToBuffer(int3(rv.x, rv.y, rv.z), inputSize);
 
-    float4 src = UnpackColor(output[index]);
+    float4 src = UnpackColor(output[ptr + index]);
     float4 dst = input[buffer];
 
     float4 result;
     result.a = src.a + dst.a * (1.0 - src.a);
     result.rgb = lerp(src.rgb, dst.rgb, dst.a);
 
-    output[index] = PackColor(result);
+    output[ptr + index] = PackColor(result);
     // }
     // int xInput = rect.x;
     // int yInput = rect.y;

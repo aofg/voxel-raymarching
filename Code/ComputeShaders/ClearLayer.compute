@@ -9,11 +9,5 @@ int ptr;
 [numthreads(SIDE2, 1, 1)]
 void CSMain (uint dispatchId : SV_DispatchThreadID)
 {
-    for (uint o = dispatchId; o < dispatchId + SIDE2; o++) {
-        if (o >= ptr + length) {
-            return;
-        }
-
-        output[ptr + o] = 0;
-    }
+    output[ptr + dispatchId] = 0;
 }

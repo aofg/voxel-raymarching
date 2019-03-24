@@ -22,26 +22,27 @@
 
         #include "UnityCG.cginc"
         #include "UnityPBSLighting.cginc"
-        #include "./Include/Common.cginc"
-        #include "./Include/Primitives.cginc"
-        #include "./Include/Math.cginc"
+        #include "./Include/Structs.cginc"
+        #include "./Include/Utils.cginc"
         #include "./Include/Raymarching.cginc"
         #include "./Code/ComputeShaders/Bake.cginc"
         
         float4 _VolumeSize;
+        uniform StructuredBuffer<int> _AllocationMap;
+        uniform int3 _WorldSize;
+        uniform int3 _ChunkSize;
+        uniform int _ChunkLength;
         uniform int _BufferPtr;
         uniform StructuredBuffer<int> _Buffer;
         
 
-        bool getHit(in float3 pos, out float4 voxel) {
-            int3 m = floor(pos);
-            if (m.x < 0 || m.y < 0 || m.z < 0 || m.x >= _VolumeSize.x || m.y >= _VolumeSize.y || m.z >= _VolumeSize.z) return false;
+        bool getHit(in int3 m, in int ptr,  out float4 voxel) {
 
             // int u = m.y + m.z * _VolumeSize.x;
             // int v = m.x;
             // int index = u * _VolumeSize.x + v;////y * _VolumeSize.x * _VolumeSize.y + x;
             int index = BufferToIndex(VoxelToBuffer(uint3(m)));
-            int voxelInt = _Buffer[_BufferPtr + index];
+            int voxelInt = _Buffer[ptr + index];
 
             voxel.r = (voxelInt >> 24 & 0xFF) / 256.0;
             voxel.g = (voxelInt >> 16 & 0xFF) / 256.0;
@@ -59,6 +60,41 @@
             // return voxel.a > 0.5;
         }
 
+        bool raycast(inout RaymarchInfo ray, bool passThrough = false) {
+            float3 rayDir = ray.rayDir;
+            float rayLength = length(rayDir);
+            float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
+            float3 mapPos = floor(rayPos);
+            float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
+            float3 rayStep = sign(rayDir);
+            float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
+            float3 mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
+
+            bool hit = false;
+            for(ray.loop = 0; ray.loop < 85; ray.loop++) {
+                float3 m = floor(mapPos);
+                bool outside = m.x < 0 || m.y < 0 || m.z < 0 || m.x >= _VolumeSize.x || m.y >= _VolumeSize.y || m.z >= _VolumeSize.z;
+
+                if (!outside && getHit(m, _BufferPtr, ray.voxel)) { 
+                    hit = true; 
+                    break;
+                }
+                
+                mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
+                sideDist += mask * deltaDist;
+                mapPos += mask * rayStep;
+
+                if(outside) {
+                    hit = false;
+                    continue;
+                }
+            }
+
+            ray.endPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
+            ray.normal = -rayStep * mask;
+
+            return hit;
+        }
 
         ENDCG
 
@@ -136,69 +172,58 @@
                 
                 RaymarchInfo ray;
                 INITIALIZE_RAYMARCH_INFO(ray, i, 128, 0.001);
-                
-                float3 rayDir = ray.rayDir;
-                float rayLength = length(rayDir);
-                float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
-                float3 mapPos = floor(rayPos);
-                float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
-                float3 rayStep = sign(rayDir);
-                float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
-                float3 mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
-                float4 voxel;
-
-                bool hit = false;
-                for(ray.loop = 0; ray.loop < 85; ray.loop++) {
-                    if (getHit(mapPos, voxel)) { 
-                        hit = true; 
-                        break;
-                    }
-                    
-                    mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
-                    sideDist += mask * deltaDist;
-                    mapPos += mask * rayStep;
-                }
+                bool hit = raycast(ray);
 
                 if (!hit) {
                     discard;
                 }
 
-                float3 endRayPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
-                float3 normal = -rayStep * mask;
-
-                float3 tangent1;
-                float3 tangent2;
-
-                if (abs(mask.x) > 0.) {
-                    // uv = endRayPos.yz;
-                    tangent1 = float3(0,1,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else if (abs(mask.y) > 0.) {
-                    // uv = endRayPos.xz;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else {
-                    // uv = endRayPos.xy;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,1,0);
-                }
-
-                float3 worldPos = ToWorld(endRayPos / _VolumeSize);
-                float3 worldNormal = normal;// 2.0 * normal - 1.0;
+                float3 worldPos = ToWorld(ray.endPos / _VolumeSize);
+                float3 worldNormal = ray.normal;// 2.0 * normal - 1.0;
                 float3 worldViewDir = normalize(UnityWorldSpaceViewDir(worldPos));
                 float3 lightDir = normalize(UnityWorldSpaceLightDir(worldPos));
 
+                RaymarchInfo lightRay;
+// struct RaymarchInfo
+// {
+//     // Input
+//     float3 startPos;
+//     float3 rayDir;
+//     float3 polyNormal;
+//     float4 projPos;
+//     float minDistance;
+//     float maxDistance;
+//     int maxLoop;
+
+//     // Output
+//     int loop;
+//     float3 endPos;
+//     float lastDistance;
+//     float totalLength;
+//     float depth;
+//     float3 normal;
+//     float4 voxel;
+// };
+
+                INITIALIZE_RAYMARCH_INFO(lightRay, i, 128, 0.001);
+                lightRay.startPos = worldPos + lightDir * 0.00001;
+                lightRay.rayDir = lightDir;
+                bool lightHit = raycast(lightRay, true);
+                // lightHit = false;
+                float3 occluderWorldPos = ToWorld(lightRay.endPos / _VolumeSize);
+                float ndot = max(0, dot(ray.normal, lightDir));
+                float distance = pow(length(occluderWorldPos - worldPos) / 1.5, .55);
+                float dcof = max(0, 1.0 - distance);
+                float shadow = 1.0 * lightHit * ndot * dcof * 0.81;// * pow(.3 / length(occluderWorldPos - worldPos), 0.5);// * max(0, distance - length(occluderWorldPos - worldPos)) / distance;
 
                 SurfaceOutputStandard so;
                 UNITY_INITIALIZE_OUTPUT(SurfaceOutputStandard, so);
-                so.Albedo = voxel.rgb;
+                so.Albedo = ray.voxel.rgb;
                 so.Metallic = 0.0;
                 so.Smoothness = 0.2;
                 so.Emission = float3(0.0, 0.0, 0.0);
                 so.Alpha = 1.0;
-                so.Occlusion = 1.0;
+                so.Occlusion = 1.0;// 1.0 - (shadow * 3.0);// -5.0;//shadow;// ? 0.0 : 1.0;
                 so.Normal = worldNormal;
 
                 UnityGI gi;
@@ -233,7 +258,6 @@
                 giInput.ambient.rgb = 0.0;
             #endif
 
-
                 giInput.probeHDR[0] = unity_SpecCube0_HDR;
                 giInput.probeHDR[1] = unity_SpecCube1_HDR;
 
@@ -260,6 +284,19 @@
                 UNITY_OPAQUE_ALPHA(o.diffuse.a);
 
                 o.depth = EncodeDepth(worldPos);
+
+                // o.diffuse = lerp(o.diffuse, 0.0, shadow * (1 - o.emission));
+                // o.emission = lerp(o.emission, 0.0, shadow * (1 - o.emission));
+                // o.specular = lerp(o.specular, 0.0, shadow * (1 - o.emission));
+
+                o.diffuse  = o.diffuse * (1.0 - shadow);
+                o.emission = o.emission * (1.0 - shadow);
+                o.specular = o.specular * (1.0 - shadow);
+
+                // float debug = (1.0 - shadow);//giInput.ambient.b;//o.emission;
+                // o.diffuse = float4(debug,debug,debug,debug);
+                // o.emission = float4(debug,debug,debug,1.0);
+                // o.specular = float4(debug,debug,debug,debug);
 
                 return o;
             }
@@ -342,56 +379,58 @@
                 ray.maxDistance = GetCameraFarClip();
                 ray.maxLoop = _ShadowLoop;
 
-                float3 rayDir = ray.rayDir;
-                float rayLength = length(rayDir);
-                float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
-                float3 mapPos = floor(rayPos);
-                float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
-                float3 rayStep = sign(rayDir);
-                float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
-                float3 mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
-                float4 voxel;
+                bool hit = raycast(ray);
 
-                bool hit = false;
-                for(ray.loop = 0; ray.loop < 85; ray.loop++) {
-                    if (getHit(mapPos, voxel)) { 
-                        hit = true; 
-                        break;
-                    }
+                // float3 rayDir = ray.rayDir;
+                // float rayLength = length(rayDir);
+                // float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
+                // float3 mapPos = floor(rayPos);
+                // float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
+                // float3 rayStep = sign(rayDir);
+                // float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
+                // float3 mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
+                // float4 voxel;
+
+                // bool hit = false;
+                // for(ray.loop = 0; ray.loop < 85; ray.loop++) {
+                //     if (getHit(mapPos, _BufferPtr, voxel)) { 
+                //         hit = true; 
+                //         break;
+                //     }
                     
-                    mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
-                    sideDist += mask * deltaDist;
-                    mapPos += mask * rayStep;
-                }
+                //     mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
+                //     sideDist += mask * deltaDist;
+                //     mapPos += mask * rayStep;
+                // }
 
                 if (!hit) {
                     discard;
                 }
 
-                float3 endRayPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
-                float3 normal = -rayStep * mask;
+                // float3 endRayPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
+                // float3 normal = -rayStep * mask;
 
-                float3 tangent1;
-                float3 tangent2;
+                // float3 tangent1;
+                // float3 tangent2;
 
-                if (abs(mask.x) > 0.) {
-                    // uv = endRayPos.yz;
-                    tangent1 = float3(0,1,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else if (abs(mask.y) > 0.) {
-                    // uv = endRayPos.xz;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else {
-                    // uv = endRayPos.xy;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,1,0);
-                }
+                // if (abs(mask.x) > 0.) {
+                //     // uv = endRayPos.yz;
+                //     tangent1 = float3(0,1,0);
+                //     tangent2 = float3(0,0,1);
+                // }
+                // else if (abs(mask.y) > 0.) {
+                //     // uv = endRayPos.xz;
+                //     tangent1 = float3(1,0,0);
+                //     tangent2 = float3(0,0,1);
+                // }
+                // else {
+                //     // uv = endRayPos.xy;
+                //     tangent1 = float3(1,0,0);
+                //     tangent2 = float3(0,1,0);
+                // }
 
-                float3 worldPos = ToWorld(endRayPos / _VolumeSize);
-                float3 worldNormal = normal;// 2.0 * normal - 1.0;
+                float3 worldPos = ToWorld(ray.endPos / _VolumeSize);
+                float3 worldNormal = ray.normal;// 2.0 * normal - 1.0;
                 float3 worldViewDir = normalize(UnityWorldSpaceViewDir(worldPos));
                 float3 lightDir = normalize(UnityWorldSpaceLightDir(worldPos));
 
@@ -432,56 +471,60 @@
                     ray.rayDir = GetCameraForward();
                 }
 
-                float3 rayDir = ray.rayDir;
-                float rayLength = length(rayDir);
-                float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
-                float3 mapPos = floor(rayPos);
-                float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
-                float3 rayStep = sign(rayDir);
-                float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
-                float3 mask;
-                float4 voxel;
+                // float3 rayDir = ray.rayDir;
+                // float rayLength = length(rayDir);
+                // float3 rayPos = ToLocal(ray.startPos) * _VolumeSize;
+                // float3 mapPos = floor(rayPos);
+                // float3 deltaDist = abs(float3(rayLength, rayLength, rayLength) / rayDir);
+                // float3 rayStep = sign(rayDir);
+                // float3 sideDist = (sign(rayDir) * (mapPos - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist; 
+                // float3 mask;
+                // float4 voxel;
 
-                bool hit = false;
-                for(ray.loop = 0; ray.loop < 85; ray.loop++) {
-                    if (getHit(mapPos, voxel)) { 
-                        hit = true; 
-                        break;
-                    }
+                // bool hit = false;
+                // for(ray.loop = 0; ray.loop < 85; ray.loop++) {
+                //     if (getHit(mapPos, _BufferPtr, voxel)) { 
+                //         hit = true; 
+                //         break;
+                //     }
                     
-                    mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
-                    sideDist += mask * deltaDist;
-                    mapPos += mask * rayStep;
-                }
+                //     mask = step(sideDist.xyz, sideDist.yzx) * step(sideDist.xyz, sideDist.zxy);
+                //     sideDist += mask * deltaDist;
+                //     mapPos += mask * rayStep;
+                // }
 
-                if (!hit) {
+                // if (!hit) {
+                //     discard;
+                // }
+
+                // float3 endRayPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
+                // float3 normal = -rayStep * mask;
+
+                // float3 tangent1;
+                // float3 tangent2;
+
+                // if (abs(mask.x) > 0.) {
+                //     // uv = endRayPos.yz;
+                //     tangent1 = float3(0,1,0);
+                //     tangent2 = float3(0,0,1);
+                // }
+                // else if (abs(mask.y) > 0.) {
+                //     // uv = endRayPos.xz;
+                //     tangent1 = float3(1,0,0);
+                //     tangent2 = float3(0,0,1);
+                // }
+                // else {
+                //     // uv = endRayPos.xy;
+                //     tangent1 = float3(1,0,0);
+                //     tangent2 = float3(0,1,0);
+                // }
+
+                if (!raycast(ray)) {
                     discard;
                 }
 
-                float3 endRayPos = rayDir / dot(mask * rayDir, 1) * dot(mask * (mapPos + step(rayDir, 0) - rayPos), 1) + rayPos;
-                float3 normal = -rayStep * mask;
-
-                float3 tangent1;
-                float3 tangent2;
-
-                if (abs(mask.x) > 0.) {
-                    // uv = endRayPos.yz;
-                    tangent1 = float3(0,1,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else if (abs(mask.y) > 0.) {
-                    // uv = endRayPos.xz;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,0,1);
-                }
-                else {
-                    // uv = endRayPos.xy;
-                    tangent1 = float3(1,0,0);
-                    tangent2 = float3(0,1,0);
-                }
-
-                float3 worldPos = ToWorld(endRayPos / _VolumeSize);
-                float3 worldNormal = normal;// 2.0 * normal - 1.0;
+                float3 worldPos = ToWorld(ray.endPos / _VolumeSize);
+                float3 worldNormal = ray.normal;// 2.0 * normal - 1.0;
                 float3 worldViewDir = normalize(UnityWorldSpaceViewDir(worldPos));
                 float3 lightDir = normalize(UnityWorldSpaceLightDir(worldPos));
 

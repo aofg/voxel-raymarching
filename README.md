@@ -36,4 +36,7 @@ cc.aofg.voxel-raymarching": "git://github.com/aofg/voxel-raymarching.git
     - [ ] Reflections
 - [ ] StructuredBuffer Rendering Pipeline
     - [x] Draft implementation
+    - [x] Draft baker
     - [ ] Memory pointer map implementation
+- [ ] Baker improvements
+    - [ ] Solid G

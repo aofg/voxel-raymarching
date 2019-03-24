@@ -8,8 +8,9 @@
 #ifndef DISTANCE_FUNCTION
 inline float _DefaultDistanceFunction(float3 pos)
 {
-    return Box(pos, 1.0);
+    return length(pos) - 1.0;
 }
+
 #define DISTANCE_FUNCTION _DefaultDistanceFunction
 #endif
 

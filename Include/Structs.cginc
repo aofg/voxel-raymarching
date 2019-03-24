@@ -30,6 +30,7 @@ struct RaymarchInfo
     float totalLength;
     float depth;
     float3 normal;
+    float4 voxel;
 };
 
 #endif
