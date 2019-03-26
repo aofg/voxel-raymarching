@@ -9,8 +9,8 @@ namespace VoxelRaymarching
         private const int MAX_LAYERS_COUNT = 64;
         
         internal readonly ChunkVolumeLayer[] layers;
-        internal int layersCount;
-        internal int pointer;
+        internal uint layersCount;
+        internal uint pointer;
         internal ComputeBuffer target;
 
 
@@ -19,7 +19,7 @@ namespace VoxelRaymarching
             layers = new ChunkVolumeLayer[MAX_LAYERS_COUNT];
         }
 
-        internal void Initialize(ComputeBuffer target, int pointer)
+        internal void Initialize(ComputeBuffer target, uint pointer)
         {
             layersCount = 0;
             this.target = target;
@@ -69,7 +69,7 @@ namespace VoxelRaymarching
             }
         }
 
-        public BufferVolumeTaskBuilder CreateTask(ComputeBuffer buffer, int pointer)
+        public BufferVolumeTaskBuilder CreateTask(ComputeBuffer buffer, uint pointer)
         {
             var task = GetNextBuilder();
             task.Initialize(buffer, pointer);
@@ -92,18 +92,17 @@ namespace VoxelRaymarching
             return new BufferVolumeTaskBuilder();
         }
 
-        internal void InternalBake(ChunkVolumeLayer[] layers, int layersCount, ComputeBuffer cb, int pointer)
+        private void InternalBake(ChunkVolumeLayer[] layers, uint layersCount, ComputeBuffer cb, uint pointer)
         {
             ClearShader.SetBuffer(0, "output", cb);
             ClearShader.SetInt("length", 32 * 32 * 32);
-            ClearShader.SetInt("ptr", pointer);
+            ClearShader.SetInt("ptr", unchecked((int)pointer));
             ClearShader.Dispatch(0, 32, 1, 1); // 1024 cols
 
             BlendShader.SetBuffer(0, "output", cb);
-            BlendShader.SetInt("ptr", pointer);
+            BlendShader.SetInt("ptr", unchecked((int)pointer));
 
-
-            for (int index = 0; index < layersCount; index++)
+            for (var index = 0; index < layersCount; index++)
             {
                 var layer = layers[index];
                 
@@ -116,7 +115,7 @@ namespace VoxelRaymarching
             }
         }
 
-        internal void ReleaseBuilder(BufferVolumeTaskBuilder bufferVolumeTaskBuilder)
+        private void ReleaseBuilder(BufferVolumeTaskBuilder bufferVolumeTaskBuilder)
         {
             bufferVolumeTaskBuilder.target = null;
             _pooledBuilders.Push(bufferVolumeTaskBuilder);

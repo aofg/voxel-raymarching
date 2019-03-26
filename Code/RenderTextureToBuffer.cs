@@ -10,6 +10,7 @@
 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Unity.Mathematics;
 using UnityEngine;
@@ -40,34 +41,88 @@ namespace VoxelRaymarching
 
         private void OnEnable()
         {
+            var children = transform.GetComponentsInChildren<Transform>();
+            for (var index = 0; index < children.Length; index++)
+            {
+                if (children[index] == transform)
+                {
+                    continue;
+                }
+                
+                if (Application.isPlaying)
+                {
+                    Destroy(children[index].gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(children[index].gameObject);
+                    
+                }
+            }
+            
+            var list = new List<Vector3>();
+//            list.Add(new Vector3(1.001f, 0.001f, 0f).normalized);
+//            list.Add(new Vector3(0.001f, 1.001f, 0f).normalized);
+//            list.Add(new Vector3(0.001f, 0f, 1.001f).normalized);
+//            list.Add(-(new Vector3(1.001f, 0.001f, 0f).normalized));
+//            list.Add(-(new Vector3(0.001f, 1.001f, 0f).normalized));
+//            list.Add(-(new Vector3(0.001f, 0f, 1.001f).normalized));
+            
+            var max = 64;
+            while (max-- > 0)
+            {
+                var ray = UnityEngine.Random.onUnitSphere;
+                ray.y = Mathf.Abs(ray.y);
+                list.Add(ray);
+            }
+            
+
+            Shader.SetGlobalFloatArray("_UniformRays", list.SelectMany(v => new[] {v.x, v.y, v.z}).ToArray());
+
+            if (Application.isPlaying)
+            {
+                enabled = false;
+            }
+
             cb = new ComputeBuffer(2 * 32 * 32 * 32, sizeof(int));
-        }
+            
 
-        private void OnDisable()
-        {
-            cb?.Dispose();
-        }
+            var shader = Shader.Find("Unlit/LayeredUnlit");
 
-        private void Update()
-        {
-            var mr = GetComponent<MeshRenderer>();
-            if (!mr)
+            var tmp = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            if (Application.isPlaying)
             {
-                enabled = false;
-                throw new NullReferenceException("Meshrenderer not found");
+                Destroy(tmp.GetComponent<Collider>());
+            }
+            else
+            {
+                DestroyImmediate(tmp.GetComponent<Collider>());
             }
 
-            if (Layers.Length == 0)
+            for (int i = 0; i < 32; i++)
             {
-                enabled = false;
-                throw new NullReferenceException("Layers is required");
-            }
+                var layer = Instantiate(tmp, transform);
+                layer.hideFlags = HideFlags.HideAndDontSave;
+                
+                layer.transform.localPosition = new Vector3(0.5f, i * (1f / 32f), 0.5f);
+                layer.transform.localRotation = Quaternion.Euler(90, 0, 0);
+                var layerMat = new Material(shader);
+                layerMat.SetInt("_Layer", i);
+                layerMat.SetBuffer("_Buffer", cb);
+                layerMat.SetInt("_BufferPtr", 32 * 32 * 32);
 
-            if (Layers.Any(l => l.Layer == null))
-            {
-                enabled = false;
-                throw new NullReferenceException("Layer textures is required");
+                layer.GetComponent<MeshRenderer>().material = layerMat;
             }
+            if (Application.isPlaying)
+            {
+                Destroy(tmp);
+            }
+            else
+            {
+                DestroyImmediate(tmp);
+            }
+            
+            Layers[1].Rotate = new int3(0, UnityEngine.Random.Range(-90, 90), 0);
             
             ClearShader.SetBuffer(0, "output", cb);
             ClearShader.SetInt("length", 32 * 32 * 32);
@@ -87,26 +142,11 @@ namespace VoxelRaymarching
                 BlendShader.SetTexture(0, "input", layer.Layer);
                 BlendShader.Dispatch(0, 1, 1, SHADER_BATCH);
             }
-            
-//            CopyShader.SetInts("resolution", Texture.width, Texture.height);
-//            CopyShader.SetInt("ptrDest", Texture.width * Texture.height * 5);
-//            
-//            CopyShader.SetBuffer(0, "output", cb);
-//            CopyShader.SetTexture(0, "input", Texture);
-//            CopyShader.Dispatch(0, 1 + Texture.width / SHADER_BATCH, 1 + Texture.height / SHADER_BATCH, 1);
+        }
 
-            if (Application.isPlaying)
-            {
-                mr.material.SetBuffer("_Buffer", cb);
-                mr.material.SetInt("_BufferPtr", 32 * 32 * 32);
-            }
-            else
-            {
-                mr.sharedMaterial.SetBuffer("_Buffer", cb);
-                mr.sharedMaterial.SetInt("_BufferPtr", 32 * 32 * 32);
-            }
-
-//            enabled = false;
+        private void OnDisable()
+        {
+            cb?.Dispose();
         }
     }
 }
