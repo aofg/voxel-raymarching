@@ -19,7 +19,7 @@
 			#pragma instancing_options procedural:setup
 			
 			#include "UnityCG.cginc"
-            #include "./Code/ComputeShaders/Bake.cginc"
+            #include "./Include/Bake.cginc"
 
 			struct appdata
 			{

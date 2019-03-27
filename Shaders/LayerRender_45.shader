@@ -28,7 +28,7 @@
         #include "./Include/Structs.cginc"
         #include "./Include/Utils.cginc"
         #include "./Include/Raymarching.cginc"
-        #include "./Code/ComputeShaders/Bake.cginc"
+        #include "./Include/Bake.cginc"
         
         float4 _VolumeSize;
         uniform StructuredBuffer<int> _AllocationMap;

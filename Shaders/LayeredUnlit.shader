@@ -23,7 +23,7 @@
             #pragma target 4.5
 
             #include "UnityCG.cginc"
-            #include "./Code/ComputeShaders/Bake.cginc"
+            #include "./Include/Bake.cginc"
 
             struct appdata
             {
