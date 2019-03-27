@@ -1,5 +1,5 @@
 #pragma kernel CSMain
-#include "./Bake.cginc"
+#include "../Include/Bake.cginc"
 
 Texture2D<float4> input;
 RWStructuredBuffer<int> output;
